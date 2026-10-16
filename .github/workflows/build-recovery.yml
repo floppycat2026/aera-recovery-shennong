@@ -1,0 +1,47 @@
+name: Build AERA Recovery
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: overlay
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 libncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip python3 rsync bc ccache libssl-dev
+      - name: Install repo
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Sync base source
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/lineage-23"
+          cd "$GITHUB_WORKSPACE/lineage-23"
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --depth=1 --no-repo-verify
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j4 --fail-fast
+      - name: Apply overlay
+        run: bash overlay/scripts/apply-overlay.sh "$GITHUB_WORKSPACE/lineage-23" overlay
+      - name: Build recovery
+        working-directory: lineage-23
+        run: |
+          unset TARGET_RELEASE TARGET_PRODUCT TARGET_BUILD_VARIANT TARGET_DEVICE
+          source build/envsetup.sh
+          lunch aera_shennong-aosp_current-userdebug
+          m recoveryimage -j2 2>&1 | tee recovery-build.log
+      - name: Upload recovery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aera-shennong-recovery
+          if-no-files-found: warn
+          path: |
+            lineage-23/out/target/product/shennong/recovery.img
+            lineage-23/recovery-build.log
