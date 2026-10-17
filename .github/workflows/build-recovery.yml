@@ -5,7 +5,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # Standard ubuntu-24.04 has about 145 GB and cannot hold an Android tree.
+    # This label requires GitHub Larger Runners billing/availability.
+    runs-on: ubuntu-24.04-16-core
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +19,18 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost
           sudo apt-get clean
           df -h /
+
+      - name: Check build disk capacity
+        run: |
+          available=$(df --output=avail / | tail -1)
+          echo "Available KiB: $available"
+          # A shallow Android checkout plus build output needs substantially more
+          # than the standard runner's remaining ~100 GB.
+          test "$available" -ge 200000000 || {
+            echo 'ERROR: need at least 200 GB free before repo sync.'
+            echo 'Use a GitHub Larger Runner or a self-hosted runner with >=300 GB SSD.'
+            exit 1
+          }
 
       - name: Install prerequisites
         run: |
